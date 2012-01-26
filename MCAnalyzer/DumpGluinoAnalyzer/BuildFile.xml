@@ -7,7 +7,7 @@
 <use name="GeneratorInterface/ThePEGInterface"/>
 <use name="SimGeneral/HepPDTRecord"/>
 <use name="DataFormats/Math"/>
-<use name=""/>
+<use name="root"/>
 <use name=""/>
 <flags EDM_PLUGIN="1"/>
 <export>

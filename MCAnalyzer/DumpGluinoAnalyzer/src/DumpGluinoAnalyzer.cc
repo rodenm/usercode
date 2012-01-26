@@ -13,7 +13,7 @@
 //
 // Original Author:  Marissa Rodenburg
 //         Created:  Mon Aug 15 10:18:57 CDT 2011
-// $Id$
+// $Id: DumpGluinoAnalyzer.cc,v 1.1 2011/09/29 18:05:12 rodenm Exp $
 //
 //
 
@@ -43,6 +43,7 @@
 #include "SimGeneral/HepPDTRecord/interface/ParticleDataTable.h"
 #include "DataFormats/Math/interface/LorentzVector.h"
 
+#include "TLorentzVector.h"
 
 //
 // class declaration
@@ -65,11 +66,27 @@ private:
   virtual void beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
   virtual void endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&);
   
+  // Helper functions
+  double eta(double x, double y, double z, double time);
+
   std::ofstream mStream_;
   std::string mProducer_;
   std::string hepProducer_;
-      // ----------member data ---------------------------
-};
+  unsigned stopped_count_;
+  unsigned hb_count_;
+  unsigned he_count_;
+  unsigned eb_count_;
+  unsigned ee_count_;
+  unsigned mb_count_;
+  unsigned me_count_;
+  unsigned tracker_count_;
+  unsigned detector_count_;
+  unsigned cavern_count_;
+  unsigned other_count_;
+  unsigned total_count_;
+  // ----------member data ---------------------------
+}
+;
 
 //
 // constants, enums and typedefs
@@ -88,6 +105,18 @@ DumpGluinoAnalyzer::DumpGluinoAnalyzer(const edm::ParameterSet& iConfig)
     hepProducer_ (iConfig.getUntrackedParameter<std::string>("producer", "generator"))
 {
   //now do what ever initialization is needed 
+  stopped_count_ = 0;
+  total_count_ = 0;
+  hb_count_ = 0;
+  he_count_ = 0;
+  eb_count_ = 0;
+  ee_count_ = 0;
+  mb_count_ = 0;
+  me_count_ = 0;
+  tracker_count_ = 0;
+  detector_count_ = 0;
+  cavern_count_ = 0;
+  other_count_ = 0;
 }
 
 
@@ -106,6 +135,7 @@ DumpGluinoAnalyzer::~DumpGluinoAnalyzer()
 // ------------ method called for each event  ------------
 void DumpGluinoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
   //using namespace edm;
+  total_count_++;
 
   // Collect value of phi for the stopped points. Save for both gluino and r-hadron
   // comparison to monitor how energy changes over the full decay/fragmation chain.
@@ -130,6 +160,8 @@ void DumpGluinoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup
   iEvent.getByLabel (mProducer_, "StoppedParticlesY", ys);
   edm::Handle<std::vector<float> > zs;
   iEvent.getByLabel (mProducer_, "StoppedParticlesZ", zs);
+  edm::Handle<std::vector<float> > ts;
+  iEvent.getByLabel (mProducer_, "StoppedParticlesTime", ts);
   
   if (names->size() != xs->size() || xs->size() != ys->size() || ys->size() != zs->size()) {
     edm::LogError ("DumpGluinoAnalyzer") << "mismatch array sizes name/x/y/z:"
@@ -138,32 +170,70 @@ void DumpGluinoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup
     return;
   } else {
     if (names->size() > 0) {
+      stopped_count_++;
       // mStream_ << "### " << names->size() << " stopped particle(s)." << std::endl;
       for (size_t i = 0; i < names->size(); ++i) {
 	float phi = ((*ys)[i]==0 && (*xs)[i]==0) ? 0 : atan2((*ys)[i],(*xs)[i]);
 	//mStream_ << std::endl << (*names)[i] << ' ' << (*xs)[i] << ' ' << (*ys)[i] << ' ' << (*zs)[i] << ' ' << phi ;
 	if (!filled1) {
-	  stop1 << std::endl << (*names)[i] << ' ' << (*xs)[i] << ' ' << (*ys)[i] << ' ' << (*zs)[i] << ' ' << phi ;
+	  stop1 << std::endl << (*names)[i] << ' ' << (*xs)[i]/10.0 << ' ' << (*ys)[i]/10.0 
+		<< ' ' << (*zs)[i]/10.0 << ' ' << phi ;
 	  filled1 = true;
-	} else {
-	  stop2 << std::endl << (*names)[i] << ' ' << (*xs)[i] << ' ' << (*ys)[i] << ' ' << (*zs)[i] << ' ' << phi ;
-	  filled2 = true;
-	}
+	} 
+	//else {
+	//stop2 << std::endl << (*names)[i] << ' ' << (*xs)[i]/10.0 << ' ' << (*ys)[i]/10.0 
+	//<< ' ' << (*zs)[i]/10.0 << ' ' << phi ;
+	//  filled2 = true;
+	//}
 	stoppedPhis_g.push_back(phi);
 	stoppedPhis_r.push_back(phi);
       }
       
+      double r = sqrt((*xs)[0]*(*xs)[0] + (*ys)[0]*(*ys)[0])/10.0;
+      double z = (*zs)[0]/10.0;
+      double particle_eta = eta((*xs)[0], (*ys)[0], (*zs)[0], (*ts)[0]);
+      
+      // Identify which detector region the particles stopped in. For ME and MB, this
+      // definition includes the entire muon system, not just the yokes.
+      if (r < 131.0 && fabs(particle_eta) <= 2.5 && fabs(z) < 300.0) { // TRACKER
+        tracker_count_++;
+      } else if (r>=131.0 && r<184.0 && fabs(z)<376.0 && fabs(particle_eta)<1.479) { // EB
+        eb_count_++;
+      } else if (fabs(z)<376.0 && fabs(z) >= 300.0 && fabs(particle_eta)>=1.479
+                 && fabs(particle_eta)<3.0){ // EE
+        ee_count_++;
+      } else if (r>=184.0 && r<295.0 && fabs(particle_eta)<1.3 && fabs(z)<500.0) { // HB
+        hb_count_++;
+      } else if (fabs(z)<560.0 && fabs(z)>=376.0 && fabs(particle_eta)>=1.3
+                 && fabs(particle_eta)<3.0) { // HE
+      } else if (r>=295.0 && r<728.5 && fabs(z)<675.0) { // MB
+        mb_count_++;
+      } else if (r>=267.3 && r<728.5 && fabs(z)>=675.0 && fabs(z)<1080.0) { // ME-top
+	me_count_++;
+      } else if (r<267.3 && fabs(particle_eta)<3.0 && fabs(z)>=560.0
+                 && fabs(z)<1080.0) { // ME-bottom
+        me_count_++;
+      } else if (r<728.5 && fabs(z)<1080.0) { // other regions?
+        other_count_++;
+      }
+
+      if (r >= 728.5 || fabs(z) > 1080)
+	cavern_count_++;
+      else
+	detector_count_++;
+
       edm::Handle<edm::HepMCProduct> hepMC;
       iEvent.getByLabel(hepProducer_, "", hepMC);
       const HepMC::GenEvent* mc = hepMC->GetEvent();
       if( mc == 0 ) 
 	throw edm::Exception( edm::errors::InvalidReference ) << "HepMC has null pointer to GenEvent" << std::endl;
+    
       //const size_t size = mc->particles_size();
       //std::cout << "particles: " << size << std::endl;
-      //mc->print( std::cout );
-      
+      //mc->print( std::cout );      
       // Iterate over the HepMC vertices and particles, look for the gluinos that produce r-hadrons,
       // print kinematic info for the earliest gluino that has the same phi as the stopped r-hadron
+      /**
       for ( HepMC::GenEvent::particle_const_iterator piter  = mc->particles_begin();
 	    piter != mc->particles_end(); 
 	    ++piter ) {
@@ -243,7 +313,9 @@ void DumpGluinoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup
 	  //mStream_ << " " << partId << " " << eta << " " << phi << " " << pt << " " << e; //<< std::endl;
 	}
       }
+      */
     } 
+      
     if (filled1) mStream_ << stop1.str();
     if (filled2) mStream_ << stop2.str();
     mStream_ << rStream.str();
@@ -268,14 +340,30 @@ void DumpGluinoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup
 // ------------ method called once each job just before starting event loop  ------------
 void 
 DumpGluinoAnalyzer::beginJob(){
-  mStream_ << "r-hadron x  y  z  phi  pdgid  gluino_phi  gluino_eta  gluino_pT  gluino_E\n"
-	   << "\tpdgid  gluino_phi  gluino_eta  gluino_pT  gluino_E  pdgid  rhadron_phi  rhadron_eta  rhadron_pT  rhadron_E";
+  //mStream_ << "r-hadron x  y  z  phi  pdgid  gluino_phi  gluino_eta  gluino_pT  gluino_E\n"
+  //	   << "\tpdgid  gluino_phi  gluino_eta  gluino_pT  gluino_E  pdgid  rhadron_phi  rhadron_eta  rhadron_pT  rhadron_E";
+  mStream_ << "r-hadron x  y  z  phi";
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void 
 DumpGluinoAnalyzer::endJob() {
-  mStream_ << std::endl;
+  mStream_ << std::endl << std::endl;
+  mStream_ << "-------------------------------" << std::endl;
+  mStream_ << "Total count = " << total_count_ << std::endl;
+  mStream_ << "Stopped count = " << stopped_count_ << std::endl;
+
+  mStream_ << "Tracker count = " << tracker_count_ << std::endl;
+  mStream_ << "EB count = " << eb_count_ << std::endl;
+  mStream_ << "EE count = " << ee_count_ << std::endl;
+  mStream_ << "HB count = " << hb_count_ << std::endl;
+  mStream_ << "HE count = " << he_count_ << std::endl;
+  mStream_ << "MB count = " << mb_count_ << std::endl;
+  mStream_ << "ME count = " << me_count_ << std::endl << std::endl;
+  
+  mStream_ << "detector_count = " << detector_count_ << std::endl;
+  mStream_ << "cavern count = " << cavern_count_ << std::endl;
+  mStream_ << "other count = " << other_count_ << std::endl;
 }
 
 // ------------ method called when starting to processes a run  ------------
@@ -307,6 +395,21 @@ DumpGluinoAnalyzer::fillDescriptions(edm::ConfigurationDescriptions& description
   desc.setUnknown();
   descriptions.addDefault(desc);
 }
+
+/**
+ * eta()
+ * 
+ * Calculates eta (pseudorapidity) given the cartesian coordinates
+ */
+// TODO: there's some weirdness where if pt = 0, PsuedoRapitidy() returns
+//       a bad value. I don't know how it's calculating pt considering
+//       the input is just the position...sort this out.
+double DumpGluinoAnalyzer::eta(double x, double y, double z, double time) {
+  TLorentzVector v = TLorentzVector(x, y, z, time);
+  return v.PseudoRapidity();
+}
+
+
 
 //define this as a plug-in
 DEFINE_FWK_MODULE(DumpGluinoAnalyzer);
