@@ -11,7 +11,7 @@ process.maxEvents = cms.untracked.PSet(
 
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-    'file:/store/user/rodenm/data/mcgluino/EXO_HSCP_Gluino700_Summer11ReReproduce_GEN_SIM_exotica-EXO_HSCP_Gluino700_Summer11ReReproduce_GEN_SIM-67d0e10d7777587419655e23d92ea291_USER_HSCPgluino_M_700_7TeV_pythia6_cff_py_GEN_SIM_100_1_wPE.root')
+    'file:../../../STEP2_RAW2DIGI_L1Reco_RECO_PU_10_1_W51.root')
 )
 
 process.analyze = cms.EDAnalyzer('DumpGluinoAnalyzer',

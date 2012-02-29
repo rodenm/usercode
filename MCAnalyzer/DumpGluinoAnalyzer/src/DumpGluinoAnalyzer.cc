@@ -13,7 +13,7 @@
 //
 // Original Author:  Marissa Rodenburg
 //         Created:  Mon Aug 15 10:18:57 CDT 2011
-// $Id: DumpGluinoAnalyzer.cc,v 1.1 2011/09/29 18:05:12 rodenm Exp $
+// $Id: DumpGluinoAnalyzer.cc,v 1.2 2012/01/26 17:43:41 rodenm Exp $
 //
 //
 
@@ -206,6 +206,7 @@ void DumpGluinoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup
         hb_count_++;
       } else if (fabs(z)<560.0 && fabs(z)>=376.0 && fabs(particle_eta)>=1.3
                  && fabs(particle_eta)<3.0) { // HE
+	he_count_++;
       } else if (r>=295.0 && r<728.5 && fabs(z)<675.0) { // MB
         mb_count_++;
       } else if (r>=267.3 && r<728.5 && fabs(z)>=675.0 && fabs(z)<1080.0) { // ME-top
