@@ -13,7 +13,7 @@
 //
 // Original Author:  Marissa Rodenburg
 //         Created:  Mon Aug 15 10:18:57 CDT 2011
-// $Id: DumpGluinoAnalyzer.cc,v 1.2 2012/01/26 17:43:41 rodenm Exp $
+// $Id: DumpGluinoAnalyzer.cc,v 1.3 2012/02/29 20:09:23 rodenm Exp $
 //
 //
 
@@ -22,6 +22,7 @@
 #include <memory>
 #include <fstream>
 #include <cmath>
+#include <vector>
 #include <TMath.h>
 
 // user include files
@@ -44,6 +45,7 @@
 #include "DataFormats/Math/interface/LorentzVector.h"
 
 #include "TLorentzVector.h"
+
 
 //
 // class declaration
@@ -68,6 +70,7 @@ private:
   
   // Helper functions
   double eta(double x, double y, double z, double time);
+  void getMasses(const edm::Event& iEvent, const edm::EventSetup& iSetup);
 
   std::ofstream mStream_;
   std::string mProducer_;
@@ -91,7 +94,8 @@ private:
 //
 // constants, enums and typedefs
 //
-
+int sparticleID_ = 1000006;//1000021;
+int particleID_ = 6;
 //
 // static data member definitions
 //
@@ -131,11 +135,113 @@ DumpGluinoAnalyzer::~DumpGluinoAnalyzer()
 //
 // member functions
 //
+void DumpGluinoAnalyzer::getMasses(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
+  edm::Handle<edm::HepMCProduct> hepMC;
+  iEvent.getByLabel(hepProducer_, "", hepMC);
+  const HepMC::GenEvent* mc = hepMC->GetEvent();
+  if( mc == 0 ) 
+    throw edm::Exception( edm::errors::InvalidReference ) << "HepMC has null pointer to GenEvent" << std::endl;
+  
+  //const size_t size = mc->particles_size();
+  //std::cout << "particles: " << size << std::endl;
+  mc->print( std::cout );      
+  
+  unsigned sparticle_count = 0;
+  unsigned neutralino_count = 0;
+  unsigned particle_count = 0;
+  std::vector<double> sparticleM;
+  std::vector<double> neutralinoM;
+  std::vector<double> particleM;
+  std::vector<double> neutralinoE;
+  std::vector<double> particleE;
+  // Iterate over the HepMC vertices and particles, look for the gluinos that produce r-hadrons,
+  // print kinematic info for the earliest gluino that has the same phi as the stopped r-hadron
+  for ( HepMC::GenEvent::particle_const_iterator piter  = mc->particles_begin();
+	piter != mc->particles_end(); 
+	++piter ) {
+    HepMC::GenParticle* p = *piter;
+    int partId = p->pdg_id();
+    
+    if (partId == sparticleID_ && sparticle_count < 1) {
+      math::XYZTLorentzVector momentum1(p->momentum().px(),
+					p->momentum().py(),
+					p->momentum().pz(),
+					p->momentum().e());
+      //double phi = momentum1.phi();
+      //double pt = momentum1.pt();
+      //double e = momentum1.e();
+      //double eta = momentum1.eta();
+      double mass = p->momentum().m();  
+
+      sparticleM.push_back(mass);
+      sparticle_count++;
+    }
+    if (partId > 1000021 && partId < 1000038 && neutralino_count < 1) {
+      math::XYZTLorentzVector momentum1(p->momentum().px(),
+					p->momentum().py(),
+					p->momentum().pz(),
+					p->momentum().e());
+      //double phi = momentum1.phi();
+      //double pt = momentum1.pt();
+      double e = momentum1.e();
+      //double eta = momentum1.eta();
+      double mass = p->momentum().m();  
+
+      neutralinoM.push_back(mass);
+      neutralinoE.push_back(e);
+      neutralino_count++;
+    }
+    if ( (partId == particleID_) && particle_count < 1) {
+      math::XYZTLorentzVector momentum1(p->momentum().px(),
+					p->momentum().py(),
+					p->momentum().pz(),
+					p->momentum().e());
+      //double phi = momentum1.phi();
+      //double pt = momentum1.pt();
+      double e = momentum1.e();
+      //double eta = momentum1.eta();
+      double mass = p->momentum().m();  
+
+      particleM.push_back(mass);
+      particleE.push_back(e);
+      particle_count++;
+    }
+    if ( (partId >= 1000600) ) {
+      math::XYZTLorentzVector momentum1(p->momentum().px(),
+					p->momentum().py(),
+					p->momentum().pz(),
+					p->momentum().e());
+      //double phi = momentum1.phi();
+      //double pt = momentum1.pt();
+      double e = momentum1.e();
+      //double eta = momentum1.eta();
+      double mass = p->momentum().m();  
+      
+      //mStream_ << partId << "\t" << mass << "\t" << e << std::endl;
+    }
+  }
+  // If the sparticle never decays, the following print statement will segfault
+  if (sparticle_count > particle_count || sparticle_count > neutralino_count) {
+    for (unsigned i = 0; i < sparticle_count; i++) {
+      mStream_ << sparticleM[i] << std::endl;
+    }
+  } else {
+    for (unsigned i = 0; i < sparticle_count; i++) {
+      mStream_ << sparticleM[i] << "\t" << neutralinoM[i] << "\t" << particleM[i] 
+	       << "\t" << neutralinoE[i] << "\t" << particleE[i] << std::endl;
+    }
+  }
+  
+}
 
 // ------------ method called for each event  ------------
 void DumpGluinoAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup) {
   //using namespace edm;
   total_count_++;
+
+  // Use this function to print the sparticle, neutralino, and daughter masses
+  getMasses(iEvent, iSetup);
+  return;
 
   // Collect value of phi for the stopped points. Save for both gluino and r-hadron
   // comparison to monitor how energy changes over the full decay/fragmation chain.
@@ -343,7 +449,10 @@ void
 DumpGluinoAnalyzer::beginJob(){
   //mStream_ << "r-hadron x  y  z  phi  pdgid  gluino_phi  gluino_eta  gluino_pT  gluino_E\n"
   //	   << "\tpdgid  gluino_phi  gluino_eta  gluino_pT  gluino_E  pdgid  rhadron_phi  rhadron_eta  rhadron_pT  rhadron_E";
-  mStream_ << "r-hadron x  y  z  phi";
+  
+  // for dumpMasses
+  mStream_ << "m_stop\tm_neutralino\tm_top\tE_neutralino\tE_top\n";
+  //mStream_ << "m_gluino\tm_neutralino\tm_gluon\tE_neutralino\tE_gluon\n";
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
