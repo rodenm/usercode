@@ -16,9 +16,16 @@
 //
 // Original Author:  Marissa Rodenburg
 //         Created:  Wed May 16 15:22:57 CDT 2012
-// $Id$
+// $Id: HaloFilterPerformanceAnalyzer.cc,v 1.1 2012/05/21 17:55:12 rodenm Exp $
 //
 //
+
+//
+// TODO:
+// - Add code to calculate halo rate by fill
+// - Break out some of this to an EDFilter
+// - Have event list write out to a text file. Make this crab-compatible.
+
 
 
 // system include files
@@ -60,6 +67,10 @@
 #include "DataFormats/METReco/interface/CaloMETCollection.h"
 #include "DataFormats/METReco/interface/PFMETCollection.h"
 #include "DataFormats/METReco/interface/PFMET.h"
+#include "DataFormats/MuonReco/interface/Muon.h"
+#include "DataFormats/MuonReco/interface/MuonChamberMatch.h"
+#include "DataFormats/MuonReco/interface/MuonFwd.h"
+#include "DataFormats/MuonReco/interface/MuonSegmentMatch.h"
 #include "Geometry/CommonDetUnit/interface/GeomDetUnit.h"
 #include "Geometry/CSCGeometry/interface/CSCGeometry.h"
 #include "Geometry/Records/interface/MuonGeometryRecord.h"
@@ -106,11 +117,15 @@ private:
   TH1F hL1HaloTrigger_;
   TH1F hLooseHaloMET_;
   TH1F hTightHaloMET_;
+  TH1F hCrudeDphiCSCSegmentMET_;
+  TH1F hDphiCSCSegmentMET_;
+  TH1F hDphiProbeCSCSegmentMET_;
 
   // TODO: this should be a cfg file parameter
   bool printEventInfo_;
   float minimumMET_;    // in GeV
   std::stringstream metCSCEvents_;
+  std::string outputFileName_;
 };
 
 //
@@ -124,10 +139,14 @@ private:
 //
 // constructors and destructor
 //
-HaloFilterPerformanceAnalyzer::HaloFilterPerformanceAnalyzer(const edm::ParameterSet& iConfig) {
+HaloFilterPerformanceAnalyzer::HaloFilterPerformanceAnalyzer(const edm::ParameterSet& iConfig) :
+  printEventInfo_(iConfig.getParameter<bool>("printEventInfo")),
+  minimumMET_(iConfig.getParameter<double>("minimumMET")),
+  outputFileName_(iConfig.getParameter<std::string>("outputFile"))
+{
   //now do what ever initialization is needed
-  printEventInfo_ = false;
-  minimumMET_ = 50.0; 
+  //printEventInfo_ = false;
+  //minimumMET_ = 50.0; 
   
   // TODO: only initialize this when analyzeMET will be called
   // metCSCEvents_;
@@ -148,11 +167,12 @@ HaloFilterPerformanceAnalyzer::~HaloFilterPerformanceAnalyzer() {
 
 // ------------ method called once each job just before starting event loop  ------------
 void HaloFilterPerformanceAnalyzer::beginJob() {
-  hHaloWithMET_ = TH1F("HaloWithMET", "", 4, 0.5, 4.5);
+  hHaloWithMET_ = TH1F("HaloWithMET", "", 5, 0.5, 5.5);
   hHaloWithMET_.GetXaxis()->SetBinLabel(1,"MET>50GeV");
   hHaloWithMET_.GetXaxis()->SetBinLabel(2,"MET>50GeV && Opposite CSCSegment");
-  hHaloWithMET_.GetXaxis()->SetBinLabel(3,"MET>50GeV && Opposite CSCSegment && CSCLoose");
-  hHaloWithMET_.GetXaxis()->SetBinLabel(4,"MET>50GeV && Opposite CSCSegment && CSCTight");
+  hHaloWithMET_.GetXaxis()->SetBinLabel(2,"MET>50GeV && Opposite NC-CSCSegment");
+  hHaloWithMET_.GetXaxis()->SetBinLabel(3,"MET>50GeV && Opposite NC-CSCSegment && CSCLoose");
+  hHaloWithMET_.GetXaxis()->SetBinLabel(4,"MET>50GeV && Opposite NC-CSCSegment && CSCTight");
   hHaloWithMET_.SetTitle("MET requirements & halo filter results");
 
   hNotHaloFlags_   = TH1F("NotHaloFlags", "", 8, 0.5, 8.5);
@@ -195,7 +215,12 @@ void HaloFilterPerformanceAnalyzer::beginJob() {
 
   hMETPhi_ = TH1F("METPhi", "", 72 ,-TMath::Pi() , TMath::Pi());
   hCSCSegmentPhi_ = TH1F("CSCSegmentPhi", "", 72 ,-TMath::Pi() , TMath::Pi());
-  hMET_ = TH1F("MET", "", 200, 0.0, 200.0);
+  hMET_ = TH1F("AllMET", "", 200, 0.0, 200.0);
+
+  const double dphiBins[12] = {0., .3 ,.6 ,.9 ,1.2 ,1.5, 1.8, 2.1, 2.4, 2.7, 3.0, TMath::Pi()};
+  hCrudeDphiCSCSegmentMET_ = TH1F("crudeDphi_CSCSegmentMET", "", 11, dphiBins);
+  hDphiCSCSegmentMET_ = TH1F("Dphi_CSCSegmentMET", "" , 36, 0, TMath::Pi());
+  hDphiProbeCSCSegmentMET_ = TH1F("DphiProbe_CSCSegmentMET", "" , 36, 0, TMath::Pi());
 
   hL1HaloTrigger_ = TH1F("L1HaloTrigger", "", 2, 0.5, 2.5);
   hL1HaloTrigger_.GetXaxis()->SetBinLabel(1,"No Accept");
@@ -206,7 +231,8 @@ void HaloFilterPerformanceAnalyzer::beginJob() {
 void HaloFilterPerformanceAnalyzer::endJob() {
 
   // TODO: this should be a cfg file parameter
-  TFile *outputFile = new TFile("haloFilterPerformance.root","RECREATE");
+  //TFile *outputFile = new TFile("haloFilterPerformance.root","RECREATE");
+  TFile *outputFile = new TFile(outputFileName_.c_str(),"RECREATE");
 
   outputFile->cd();
   hHaloWithMET_.Write();
@@ -220,12 +246,15 @@ void HaloFilterPerformanceAnalyzer::endJob() {
 
   hMETPhi_.Write();
   hCSCSegmentPhi_.Write();
+  hCrudeDphiCSCSegmentMET_.Write();
+  hDphiCSCSegmentMET_.Write();
+  hDphiProbeCSCSegmentMET_.Write();
   hMET_.Write();
   hL1HaloTrigger_.Write();
 
   // TODO: make this contingent on a bool that is passed in from the config file
   std::cout << "-------------------------------------------------" << std::endl;
-  std::cout << "Events with MET > " << minimumMET_ << " and opposite CSCSegment" << std::endl;
+  std::cout << "Events with MET > " << minimumMET_ << " and opposite NC-CSCSegment" << std::endl;
   std::cout << "-------------------------------------------------" << std::endl;
   std::cout << metCSCEvents_.str() << std::endl << std::endl;
   
@@ -236,11 +265,31 @@ void HaloFilterPerformanceAnalyzer::endJob() {
   std::cout << "L1Halo Trigger: " << hL1HaloTrigger_.GetBinContent(2) << std::endl <<std::endl;
 
   std::cout << "---------------MET Filter Summary-----------------" << std::endl;
-  std::cout << "MET>50GeV:                                    " << hHaloWithMET_.GetBinContent(1) << std::endl;
-  std::cout << "MET>50GeV && Opposite CSCSegment:             " << hHaloWithMET_.GetBinContent(2) << std::endl;
-  std::cout << "MET>50GeV && Opposite CSCSegment && CSCLoose: " << hHaloWithMET_.GetBinContent(3) << std::endl;
-  std::cout << "MET>50GeV && Opposite CSCSegment && CSCTight: " << hHaloWithMET_.GetBinContent(4) << std::endl;
-  
+  std::cout << "MET>50GeV:                                       " << hHaloWithMET_.GetBinContent(1) << std::endl;
+  std::cout << "MET>50GeV && Opposite CSCSegment:                " << hHaloWithMET_.GetBinContent(2) << std::endl;
+  std::cout << "MET>50GeV && Opposite NC-CSCSegment:             " << hHaloWithMET_.GetBinContent(3) << std::endl;
+  std::cout << "MET>50GeV && Opposite NC-CSCSegment && CSCLoose: " << hHaloWithMET_.GetBinContent(4) << std::endl;
+  std::cout << "MET>50GeV && Opposite NC-CSCSegment && CSCTight: " << hHaloWithMET_.GetBinContent(5) << std::endl;
+  std::cout << std::endl;
+  // Use a crude sideband subtraction to estimate the non-halo contamination 
+  // of the "MET>50GeV && Opposite NC-CSCSegment" signal region. This crude because
+  // Dphi isn't exactly flat (I'm assuming it is here); there's a bit of a peak
+  // near Dphi = 0. However, it's small for pfmet so I'm rocking the easy method.
+  //
+  // Documentation: http://lphe.epfl.ch/publications/diplomas/fd.master.pdf page 17
+  //
+  double nTotal = hCrudeDphiCSCSegmentMET_.Integral(1,11);
+  double nBackground = hCrudeDphiCSCSegmentMET_.Integral(1,10);
+  double nBackgroundInSignal = nBackground*(TMath::Pi()-3.0)/3.0;
+  std::cout << "---------------MET Filter Summary-----------------" << std::endl;
+  std::cout << "N_total    = " << nTotal << std::endl;
+  std::cout << "N_bkgd     = " << nBackground << std::endl;
+  std::cout << "Sigma_sig  = " << TMath::Pi()-3.0 << std::endl;
+  std::cout << "Sigma_bkgd = " << 3.0 << std::endl;
+  std::cout << "N_bkgd,sig = " << nBackgroundInSignal << std::endl;
+  std::cout << "Events in signal region: " << hCrudeDphiCSCSegmentMET_.GetBinContent(11) << std::endl;
+  std::cout << "Non-halo contamination rate: " << 100.0*nBackgroundInSignal/hCrudeDphiCSCSegmentMET_.GetBinContent(11)
+	    << "%" << std::endl << std::endl;
 }
 
 // ------------ method called for each event  ------------
@@ -259,6 +308,11 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
   iEvent.getByLabel("met", TheCaloMET); 
   const reco::CaloMETCollection *calometcol = TheCaloMET.product();
   const reco::CaloMET *calomet = &(calometcol->front());
+
+  edm::Handle< reco::PFMETCollection > ThePFMET;
+  iEvent.getByLabel("pfMet", ThePFMET); 
+  const reco::PFMETCollection *pfmetcol = ThePFMET.product();
+  const reco::PFMET *pfmet = &(pfmetcol->front());
 
   bool eventPrinted = false;
   bool cscLooseId = false;
@@ -283,7 +337,8 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
       cscLooseId = true;
       hHaloSummary_.SetBinContent(2, hHaloSummary_.GetBinContent(2)+1);
       hLooseHaloFlags_.SetBinContent(2, hLooseHaloFlags_.GetBinContent(2)+1);
-      hLooseHaloMET_.Fill(calomet->pt());
+      //hLooseHaloMET_.Fill(calomet->pt());
+      hLooseHaloMET_.Fill(pfmet->pt());
       
       if ( cscHaloData.NumberOfHaloTriggers() )
 	hLooseHaloFlags_.SetBinContent(3, hLooseHaloFlags_.GetBinContent(3)+1);
@@ -309,7 +364,8 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
       cscTightId = true;
       hHaloSummary_.SetBinContent(3, hHaloSummary_.GetBinContent(3)+1);
       hTightHaloFlags_.SetBinContent(2, hTightHaloFlags_.GetBinContent(2)+1);
-      hTightHaloMET_.Fill(calomet->pt());
+      //hTightHaloMET_.Fill(calomet->pt());
+      hTightHaloMET_.Fill(pfmet->pt());
          
       if ( cscHaloData.NumberOfHaloTriggers() )
 	hTightHaloFlags_.SetBinContent(3, hTightHaloFlags_.GetBinContent(3)+1);
@@ -403,40 +459,181 @@ void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent,
 
   // TODO: Move this logic out into an EDFilter
   //////////  Unbiased Halo Tag and Probe
-  //if( pfmet->pt() > 50. && !allMuons.size() ) 
-  if( calomet->pt() > minimumMET_ ) {
+  if( pfmet->pt() > minimumMET_ ) {
+    //if( calomet->pt() > minimumMET_ ) {
 
     hHaloWithMET_.SetBinContent(1, hHaloWithMET_.GetBinContent(1)+1);
 
-    float met_phi = calomet->phi();
-    //hMETPhi_.Fill(met_phi);
+    //float met_phi = calomet->phi();
+    float met_phi = pfmet->phi();
     bool tagPlus=false;
     bool tagMinus = false;
+    bool oppositeMuon = false;
     bool dphi_bins[11]; for(int i = 0 ; i < 11 ;i++ ) dphi_bins[i]=false; 
       
-    //for(CSCRecHit2DCollection::const_iterator iCSCRecHit = TheCSCRecHits->begin();   
-    //    iCSCRecHit != TheCSCRecHits->end(); iCSCRecHit++ ) {
     for(CSCSegmentCollection::const_iterator iSegment = cscSegments->begin();
 	iSegment != cscSegments->end();
 	iSegment++) {
   
-      CSCDetId id  = (CSCDetId)iSegment->cscDetId();
-      LocalPoint localPos = iSegment->localPosition();
-      GlobalPoint globalPos = cscGeometry->chamber(id)->toGlobal(localPos);
-      float iSegment_phi = globalPos.phi();
+      CSCDetId iId  = (CSCDetId)iSegment->cscDetId();
+      LocalPoint iLocalPos = iSegment->localPosition();
+      GlobalPoint iGlobalPos = cscGeometry->chamber(iId)->toGlobal(iLocalPos);
+      float iSegment_phi = iGlobalPos.phi();
       
       iSegment_phi = iSegment_phi > TMath::Pi() ? iSegment_phi - 2.* TMath::Pi() : iSegment_phi;
       float dphi = TMath::ACos( TMath::Cos( iSegment_phi - met_phi ));
-
-      // This is the condition for CSCSegment opposite the MET vector	
+      hDphiCSCSegmentMET_.Fill(dphi);
+      hCrudeDphiCSCSegmentMET_.Fill(dphi);
+      // This is the condition for CSCSegment opposite the MET vector, but before
+      // tagging it, make sure this isn't a CSCSegment that is matched to a 
+      // collision muon.
       if( dphi >= 3. && dphi <= TMath::Pi() ) {	
-	if( globalPos.z() < 0. ) // segment in minus endcap
-	  tagMinus = true;
-	else                     // segment in plus endcap
-	  tagPlus = true;
-	dphi_bins[10]=true;
-	hCSCSegmentPhi_.Fill(iSegment_phi); // Phi for all tagged CSCSegments
-      } else { // CSCSegment NOT opposite the MET vector
+ 
+        bool hasCollisionMatch = false;
+	int nTrackerMuons = 0;
+	int nSoftMuons = 0;
+	int nSoftMuonsNoEta =0;
+	int nTightMuonsNoEta = 0;
+	int nTightMuons = 0;
+
+	/******************* BEGIN MUON SEARCH *******************/
+	// TODO: tags should be moved to cfg file
+	edm::Handle<reco::MuonCollection> collisionMuons;
+	iEvent.getByLabel("muons", collisionMuons);
+
+	if( collisionMuons.isValid()) {
+	  reco::MuonCollection::const_iterator mu;
+	  for(mu = collisionMuons->begin() ; mu != collisionMuons->end() ; mu++ ) {
+	    if( !mu->isTrackerMuon() ) continue;	  
+	    //allMuonsAllEta.push_back(&*mu);
+
+	    if( mu->eta() > 1.1  && mu->eta() <= 2.4 ) {
+	      //allMuonsPlus.push_back(&*mu);
+	      //allMuons.push_back(&*mu);
+	      nTrackerMuons++;
+	    }	  
+	    if( mu->eta() < -1.1 && mu->eta() >= -2.4 ) {
+	      //allMuonsMinus.push_back(&*mu);
+	      //allMuons.push_back(&*mu);
+	      nTrackerMuons++;
+	    }
+	  
+	    float dphi = -0.05;
+	    if( fabs(mu->eta()) > 1.0  && fabs(mu->eta()) <= 3.0 ) {
+	      const std::vector<reco::MuonChamberMatch> chambers = mu->matches();
+
+	      std::vector<reco::MuonChamberMatch>::const_iterator iChamber;
+	      for(iChamber = chambers.begin(); iChamber != chambers.end(); iChamber ++ ) {
+		if( iChamber->detector() != MuonSubdetId::CSC ) continue;
+
+		std::vector<reco::MuonSegmentMatch>::const_iterator jSegmentMatch;
+		for(jSegmentMatch = iChamber->segmentMatches.begin(); 
+		    jSegmentMatch != iChamber->segmentMatches.end(); ++jSegmentMatch ) {
+		  edm::Ref<CSCSegmentCollection> jSegment = jSegmentMatch->cscSegmentRef;
+
+		  // Check if iSegment == jSegment by looking at global coordinates
+		  CSCDetId jId  = (CSCDetId)jSegment->cscDetId();
+		  LocalPoint jLocalPos = jSegment->localPosition();
+		  GlobalPoint jGlobalPos = cscGeometry->chamber(jId)->toGlobal(jLocalPos);
+		  
+		  if (iGlobalPos == jGlobalPos) hasCollisionMatch = true;
+		}
+	      }
+	    }
+	    /**
+	    //if( mu->pt() > 10.) continue;
+
+	    if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMOneStationTight")) ) continue;
+	    if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMLastStationTight")) ) continue;
+	    const reco::TrackRef innerTrackRef = mu->innerTrack();
+	    if(innerTrackRef.isNull()) continue;
+	    if( innerTrackRef->hitPattern().pixelLayersWithMeasurement() <= 1 ) continue;
+	    if( innerTrackRef->hitPattern().numberOfValidTrackerHits() <= 11 ) continue;
+	    if( innerTrackRef->normalizedChi2() >= 1.8 ) continue;
+	    if( fabs(innerTrackRef->dxy(pv->position())) > 3. ) continue;
+
+	    if( mu->eta() > 1.1  && mu->eta() <= 2.4 ) {
+	      //softMuonsPlus.push_back(&*mu);
+	      //softMuons.push_back(&*mu);
+	      nSoftMuons++;
+	    }
+	    if( mu->eta() < -1.1 && mu->eta() >= -2.4 ) {
+	      //softMuonsMinus.push_back(&*mu);
+	      //softMuons.push_back(&*mu);
+	      nSoftMuons++;
+	    }
+	    nSoftMuonsNoEta++;
+	    */
+	  }
+          /**
+	  // Iterate again to get the tight muons
+	  reco::MuonCollection::const_iterator mu;
+	  for(mu = collisionMuons->begin() ; mu != collisionMuons->end() ; mu++ ) {
+	    if( !mu->isTrackerMuon() ) continue;
+	    if( !mu->isGlobalMuon() ) continue;
+	    if( mu->pt() < 10.) continue;
+	    const reco::TrackRef globalTrackRef = mu->globalTrack();
+	    if(globalTrackRef.isNull()) continue;
+	    if( globalTrackRef->hitPattern().numberOfValidMuonHits() == 0 ) continue;
+	    if( globalTrackRef->normalizedChi2() >= 10 ) continue;
+	    if( mu->numberOfMatchedStations() <= 1 ) continue;
+	    const reco::TrackRef innerTrackRef = mu->innerTrack();
+	    if(innerTrackRef.isNull()) continue;
+	    if( fabs(innerTrackRef->dxy(pv->position())) > .2 ) continue;
+	    if( !innerTrackRef->hitPattern().numberOfValidPixelHits()  ) continue;
+	    if( innerTrackRef->hitPattern().numberOfValidTrackerHits() <= 10 ) continue;
+	    if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMOneStationTight")) ) continue;
+	    //if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMLastStationTight")) ) continue;
+	  
+	    if( mu->eta() > 1.1  && mu->eta() <= 2.4 ) {
+	      //tightMuonsPlus.push_back(&*mu);
+	      //tightMuons.push_back(&*mu);
+	      nTightMuons += 1;
+	    }
+	    
+	    if( mu->eta() < -1.1 && mu->eta() >= -2.4 ) {
+	      //tightMuonsMinus.push_back(&*mu);
+	      //tightMuons.push_back(&*mu);
+	      nTightMuons += 1;
+	    } 
+	    nTightMuonsNoEta += 1;
+	  }
+	  */
+	}
+	/**
+	if( nTrackerMuons > 0 ) 
+	  nTrackerMuonEvents+=1;
+	
+	if( nSoftMuons > 0 ) 
+	  nSoftMuonEvents +=1;
+	
+	if( nSoftMuonsNoEta > 0 ) 
+	  nSoftMuonNoEtaEvents +=1 ;
+	
+	if( nTightMuons > 0 ) 
+	  nTightMuonEvents += 1;
+	
+	if( nTightMuonsNoEta > 0) 
+	  nTightMuonNoEtaEvents += 1;
+	*/
+	/** END MUON SEARCH **/
+	oppositeMuon = true;
+	if (hasCollisionMatch) {
+	  // Do we want to record anything about the segments that are associated 
+	  // with collision muons?
+	} else {
+	  if( iGlobalPos.z() < 0. ) 
+	    tagMinus = true;
+	  else                     
+	    tagPlus = true;
+	  dphi_bins[10]=true;
+	  hCSCSegmentPhi_.Fill(iSegment_phi); // histogram phi for all tagged CSCSegments
+	  hDphiProbeCSCSegmentMET_.Fill(dphi);
+	}
+      } 
+
+      // CSCSegment NOT opposite the MET vector, so don't tag this.
+      else if ( iGlobalPos.z() > 0. ){ 
 	int bin = dphi/0.3;
 	if( bin < 10 ) 
 	  dphi_bins[bin] = true;
@@ -464,16 +661,20 @@ void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent,
       }
     }
     // Record MET and MET phi for all events tagged.
+    if (oppositeMuon) 
+      hHaloWithMET_.SetBinContent(2, hHaloWithMET_.GetBinContent(2)+1); // MET>50GeV && Opposite CSCSegment
+
     if (tagPlus || tagMinus) {
-      hHaloWithMET_.SetBinContent(2, hHaloWithMET_.GetBinContent(2)+1); // TAG
-      hMET_.Fill(calomet->pt());
+      hHaloWithMET_.SetBinContent(3, hHaloWithMET_.GetBinContent(3)+1); // MET>50GeV && Opposite NC-CSCSegment
+      //hMET_.Fill(calomet->pt());
+      hMET_.Fill(pfmet->pt());
       hMETPhi_.Fill(met_phi);
       metCSCEvents_ <<  iEvent.id().run() << ":" <<iEvent.luminosityBlock() << ":" << iEvent.id().event()
 		    << std::endl;
       
       // Probe (ie, if event has CSCSegment opposite MET vector, is it halo?)
-      if (cscLooseId) hHaloWithMET_.SetBinContent(3, hHaloWithMET_.GetBinContent(3)+1);
-      if (cscTightId) hHaloWithMET_.SetBinContent(4, hHaloWithMET_.GetBinContent(4)+1);
+      if (cscLooseId) hHaloWithMET_.SetBinContent(4, hHaloWithMET_.GetBinContent(4)+1);
+      if (cscTightId) hHaloWithMET_.SetBinContent(5, hHaloWithMET_.GetBinContent(5)+1);
     }
   }
 }

@@ -5,6 +5,7 @@
 <use name="DataFormats/CSCRecHit"/>
 <use name="DataFormats/GeometrySurface" />
 <use name="DataFormats/METReco"/>
+<use name="DataFormats/MuonReco"/>
 <use name="FWCore/MessageLogger" />
 <use name="Geometry/CommonDetUnit" />
 <use name="Geometry/CSCGeometry" />

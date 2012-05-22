@@ -37,7 +37,7 @@ process.source = cms.Source("PoolSource",
 )
 
 process.load("BeamHalo.HaloFilterPerformanceAnalyzer.halofilterperformanceanalyzer_cfi")
-process.haloFilterAnalyzer.outputFile = cms.string('haloFilterPerformance.root')
+process.haloFilterAnalyzer.outputFile = cms.string('haloFilterPerformance_METPD_pfmet.root')
 
 process.p = cms.Path(process.haloFilterAnalyzer)
                                             
