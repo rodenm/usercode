@@ -16,7 +16,7 @@
 //
 // Original Author:  Marissa Rodenburg
 //         Created:  Wed May 16 15:22:57 CDT 2012
-// $Id: HaloFilterPerformanceAnalyzer.cc,v 1.1 2012/05/21 17:55:12 rodenm Exp $
+// $Id: HaloFilterPerformanceAnalyzer.cc,v 1.2 2012/05/22 03:12:44 rodenm Exp $
 //
 //
 
@@ -71,6 +71,8 @@
 #include "DataFormats/MuonReco/interface/MuonChamberMatch.h"
 #include "DataFormats/MuonReco/interface/MuonFwd.h"
 #include "DataFormats/MuonReco/interface/MuonSegmentMatch.h"
+#include "DataFormats/VertexReco/interface/Vertex.h"
+#include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include "Geometry/CommonDetUnit/interface/GeomDetUnit.h"
 #include "Geometry/CSCGeometry/interface/CSCGeometry.h"
 #include "Geometry/Records/interface/MuonGeometryRecord.h"
@@ -101,7 +103,7 @@ private:
   
   // helper functions
   virtual void analyzeHaloWithMET(const edm::Event&, const edm::EventSetup&, 
-				  bool, const bool, const bool);
+				  bool, const bool, const bool, const int);
 
       // ----------member data ---------------------------
 
@@ -121,10 +123,27 @@ private:
   TH1F hDphiCSCSegmentMET_;
   TH1F hDphiProbeCSCSegmentMET_;
 
+  TH1F hnVtxAll_;
+  TH1F hnVtxHaloLoose_;
+  TH1F hnVtxHaloTight_;
+  TH1F hnVtxMETAll_;
+  TH1F hnVtxMETHaloLoose_;
+  TH1F hnVtxMETHaloTight_;
+
+
   // TODO: this should be a cfg file parameter
   bool printEventInfo_;
+  bool printMETEventList_; // If false, only print regular event lists
   float minimumMET_;    // in GeV
+  std::stringstream cscEvents_;
+  std::stringstream cscLooseEvents_;
+  std::stringstream cscTightEvents_;
+  std::stringstream cscNeitherEvents_;
+
   std::stringstream metCSCEvents_;
+  std::stringstream metCSCLooseEvents_;
+  std::stringstream metCSCTightEvents_;
+  std::stringstream metCSCNeitherEvents_;
   std::string outputFileName_;
 };
 
@@ -147,6 +166,7 @@ HaloFilterPerformanceAnalyzer::HaloFilterPerformanceAnalyzer(const edm::Paramete
   //now do what ever initialization is needed
   //printEventInfo_ = false;
   //minimumMET_ = 50.0; 
+  printMETEventList_ = false;
   
   // TODO: only initialize this when analyzeMET will be called
   // metCSCEvents_;
@@ -225,6 +245,13 @@ void HaloFilterPerformanceAnalyzer::beginJob() {
   hL1HaloTrigger_ = TH1F("L1HaloTrigger", "", 2, 0.5, 2.5);
   hL1HaloTrigger_.GetXaxis()->SetBinLabel(1,"No Accept");
   hL1HaloTrigger_.GetXaxis()->SetBinLabel(2,"Accept");
+
+  hnVtxAll_ = TH1F("nVtx_All", "", 30, 0.5, 30.5);
+  hnVtxHaloLoose_ = TH1F("nVtx_HaloLoose", "", 30, 0.5, 30.5);
+  hnVtxHaloTight_ = TH1F("nVtx_HaloTight", "", 30, 0.5, 30.5);
+  hnVtxMETAll_ = TH1F("nVtx_METAll", "", 30, 0.5, 30.5);
+  hnVtxMETHaloLoose_ = TH1F("nVtx_METHaloLoose", "", 30, 0.5, 30.5);
+  hnVtxMETHaloTight_ = TH1F("nVtx_METHaloTight", "", 30, 0.5, 30.5);
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
@@ -244,6 +271,13 @@ void HaloFilterPerformanceAnalyzer::endJob() {
   hLooseHaloMET_.Write();
   hTightHaloMET_.Write();
 
+  hnVtxAll_.Write();
+  hnVtxHaloLoose_.Write();
+  hnVtxHaloTight_.Write();
+  hnVtxMETAll_.Write();
+  hnVtxMETHaloLoose_.Write();
+  hnVtxMETHaloTight_.Write();
+
   hMETPhi_.Write();
   hCSCSegmentPhi_.Write();
   hCrudeDphiCSCSegmentMET_.Write();
@@ -252,12 +286,47 @@ void HaloFilterPerformanceAnalyzer::endJob() {
   hMET_.Write();
   hL1HaloTrigger_.Write();
 
+
   // TODO: make this contingent on a bool that is passed in from the config file
-  std::cout << "-------------------------------------------------" << std::endl;
-  std::cout << "Events with MET > " << minimumMET_ << " and opposite NC-CSCSegment" << std::endl;
-  std::cout << "-------------------------------------------------" << std::endl;
-  std::cout << metCSCEvents_.str() << std::endl << std::endl;
-  
+  if (printMETEventList_) {
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "Events with MET > " << minimumMET_ << " and opposite NC-CSCSegment" << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << metCSCEvents_.str() << std::endl << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "Events with MET > " << minimumMET_ << " and opposite NC-CSCSegment && CSCLoose" 
+	      << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << metCSCLooseEvents_.str() << std::endl << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "Events with MET > " << minimumMET_ << " and opposite NC-CSCSegment && CSCTight" 
+	      << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << metCSCTightEvents_.str() << std::endl << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "Events with MET > " << minimumMET_ << " and opposite NC-CSCSegment && NotHalo" 
+	      << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << metCSCNeitherEvents_.str() << std::endl << std::endl;
+  } else {
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "All events with CSCSegment" << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << cscEvents_.str() << std::endl << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "Events with CSCLoose" << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << cscLooseEvents_.str() << std::endl << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "Events with CSCTight" << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << cscTightEvents_.str() << std::endl << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << "Events with NotHalo" << std::endl;
+    std::cout << "-------------------------------------------------" << std::endl;
+    std::cout << cscNeitherEvents_.str() << std::endl << std::endl;
+  }    
+
   std::cout << "---------------Beam Halo Summary-----------------" << std::endl;
   std::cout << "All events:     " << hHaloSummary_.GetBinContent(1) << std::endl;
   std::cout << "Loose events:   " << hHaloSummary_.GetBinContent(2) << std::endl;
@@ -279,13 +348,13 @@ void HaloFilterPerformanceAnalyzer::endJob() {
   // Documentation: http://lphe.epfl.ch/publications/diplomas/fd.master.pdf page 17
   //
   double nTotal = hCrudeDphiCSCSegmentMET_.Integral(1,11);
-  double nBackground = hCrudeDphiCSCSegmentMET_.Integral(1,10);
-  double nBackgroundInSignal = nBackground*(TMath::Pi()-3.0)/3.0;
+  double nBackground = hCrudeDphiCSCSegmentMET_.Integral(2,10);
+  double nBackgroundInSignal = nBackground*(TMath::Pi()-3.0)/2.7;
   std::cout << "---------------MET Filter Summary-----------------" << std::endl;
   std::cout << "N_total    = " << nTotal << std::endl;
   std::cout << "N_bkgd     = " << nBackground << std::endl;
   std::cout << "Sigma_sig  = " << TMath::Pi()-3.0 << std::endl;
-  std::cout << "Sigma_bkgd = " << 3.0 << std::endl;
+  std::cout << "Sigma_bkgd = " << 2.7 << std::endl;
   std::cout << "N_bkgd,sig = " << nBackgroundInSignal << std::endl;
   std::cout << "Events in signal region: " << hCrudeDphiCSCSegmentMET_.GetBinContent(11) << std::endl;
   std::cout << "Non-halo contamination rate: " << 100.0*nBackgroundInSignal/hCrudeDphiCSCSegmentMET_.GetBinContent(11)
@@ -314,24 +383,42 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
   const reco::PFMETCollection *pfmetcol = ThePFMET.product();
   const reco::PFMET *pfmet = &(pfmetcol->front());
 
+  edm::Handle<reco::VertexCollection> recoVertices;
+  iEvent.getByLabel("offlinePrimaryVertices", recoVertices);
+  
   bool eventPrinted = false;
   bool cscLooseId = false;
   bool cscTightId = false;
+  int nVtx = 0;
   
-  if( beamHaloSummaryHandle.isValid() && cscHaloDataHandle.isValid()) {
+  if( beamHaloSummaryHandle.isValid() && cscHaloDataHandle.isValid() && recoVertices.isValid() ) {
     const reco::BeamHaloSummary haloSummary = (*beamHaloSummaryHandle.product() );
     const reco::CSCHaloData cscHaloData = (*cscHaloDataHandle.product() );
     
     hNotHaloFlags_.SetBinContent(1, hNotHaloFlags_.GetBinContent(1)+1);
+    hHaloSummary_.SetBinContent(1, hHaloSummary_.GetBinContent(1)+1);
     //hLooseHaloFlags_.SetBinContent(1, hLooseHaloFlags_.GetBinContent(1)+1); // bad for scale
     //hTightHaloFlags_.SetBinContent(1, hTightHaloFlags_.GetBinContent(1)+1); // bad for scale
-    hHaloSummary_.SetBinContent(1, hHaloSummary_.GetBinContent(1)+1);
 
+    cscEvents_ << iEvent.id().run() << ":" 
+	       << iEvent.luminosityBlock() << ":" 
+               << iEvent.id().event()
+               << std::endl;
+ 
+    // Count halo triggers - curiosity 
     if ( cscHaloData.NumberOfHaloTriggers() )
       hL1HaloTrigger_.SetBinContent(2, hL1HaloTrigger_.GetBinContent(2)+1);
     else
       hL1HaloTrigger_.SetBinContent(1, hL1HaloTrigger_.GetBinContent(1)+1);
 
+    // Count # of vertices
+    reco::VertexCollection::const_iterator it;
+    for(it = recoVertices->begin(); it!=recoVertices->end(); ++it) {
+      if (!it->isFake())
+	nVtx++;
+    }
+    hnVtxAll_.Fill(nVtx);
+  
     // Loose Halo
     if (haloSummary.CSCLooseHaloId()){
       cscLooseId = true;
@@ -339,7 +426,13 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
       hLooseHaloFlags_.SetBinContent(2, hLooseHaloFlags_.GetBinContent(2)+1);
       //hLooseHaloMET_.Fill(calomet->pt());
       hLooseHaloMET_.Fill(pfmet->pt());
-      
+      hnVtxHaloLoose_.Fill(nVtx);
+      cscLooseEvents_ << iEvent.id().run() << ":" 
+		 << iEvent.luminosityBlock() << ":" 
+		 << iEvent.id().event()
+		 << std::endl;
+  
+     
       if ( cscHaloData.NumberOfHaloTriggers() )
 	hLooseHaloFlags_.SetBinContent(3, hLooseHaloFlags_.GetBinContent(3)+1);
       
@@ -366,7 +459,12 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
       hTightHaloFlags_.SetBinContent(2, hTightHaloFlags_.GetBinContent(2)+1);
       //hTightHaloMET_.Fill(calomet->pt());
       hTightHaloMET_.Fill(pfmet->pt());
-         
+      hnVtxHaloTight_.Fill(nVtx);
+      cscTightEvents_ << iEvent.id().run() << ":" 
+		      << iEvent.luminosityBlock() << ":" 
+		      << iEvent.id().event()
+		      << std::endl;
+  
       if ( cscHaloData.NumberOfHaloTriggers() )
 	hTightHaloFlags_.SetBinContent(3, hTightHaloFlags_.GetBinContent(3)+1);
       
@@ -388,6 +486,10 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
 
     // Not Halo
     if ( !haloSummary.CSCTightHaloId() && !haloSummary.CSCLooseHaloId() ) {
+        cscNeitherEvents_ << iEvent.id().run() << ":" 
+			  << iEvent.luminosityBlock() << ":" 
+			  << iEvent.id().event()
+			  << std::endl;
 
       if ( haloSummary.CSCTightHaloId() || haloSummary.CSCLooseHaloId() )  // this should be redundant
 	hNotHaloFlags_.SetBinContent(2, hLooseHaloFlags_.GetBinContent(2)+1);
@@ -426,17 +528,24 @@ void HaloFilterPerformanceAnalyzer::analyze(const edm::Event& iEvent, const edm:
     
     if (!cscHaloDataHandle.isValid())
       edm::LogError("HaloFilterPerformanceAnalyzer") << "CSCHaloData is invalid.";
+
+    if ( !recoVertices.isValid() )
+      edm::LogError("MissingProduct") << "Vertices not found. Branch will not be filled" << std::endl;
     
     return;
   }
   
   // TODO: make this contingent on a bool that is passed in from the config file
-  analyzeHaloWithMET(iEvent, iSetup, eventPrinted, cscLooseId, cscTightId);
+  analyzeHaloWithMET(iEvent, iSetup, eventPrinted, cscLooseId, cscTightId, nVtx);
 }
 
-void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent, const edm::EventSetup& iSetup,
-						       bool eventPrinted, const bool cscLooseId, 
-						       const bool cscTightId) {
+void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent, 
+						       const edm::EventSetup& iSetup,
+						       bool eventPrinted, 
+						       const bool cscLooseId, 
+						       const bool cscTightId, 
+						       const int nVtx) {
+
   edm::Handle< reco::CaloMETCollection > TheCaloMET;
   iEvent.getByLabel("met", TheCaloMET); 
   const reco::CaloMETCollection *calometcol = TheCaloMET.product();
@@ -490,11 +599,6 @@ void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent,
       if( dphi >= 3. && dphi <= TMath::Pi() ) {	
  
         bool hasCollisionMatch = false;
-	int nTrackerMuons = 0;
-	int nSoftMuons = 0;
-	int nSoftMuonsNoEta =0;
-	int nTightMuonsNoEta = 0;
-	int nTightMuons = 0;
 
 	/******************* BEGIN MUON SEARCH *******************/
 	// TODO: tags should be moved to cfg file
@@ -505,20 +609,8 @@ void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent,
 	  reco::MuonCollection::const_iterator mu;
 	  for(mu = collisionMuons->begin() ; mu != collisionMuons->end() ; mu++ ) {
 	    if( !mu->isTrackerMuon() ) continue;	  
-	    //allMuonsAllEta.push_back(&*mu);
-
-	    if( mu->eta() > 1.1  && mu->eta() <= 2.4 ) {
-	      //allMuonsPlus.push_back(&*mu);
-	      //allMuons.push_back(&*mu);
-	      nTrackerMuons++;
-	    }	  
-	    if( mu->eta() < -1.1 && mu->eta() >= -2.4 ) {
-	      //allMuonsMinus.push_back(&*mu);
-	      //allMuons.push_back(&*mu);
-	      nTrackerMuons++;
-	    }
-	  
-	    float dphi = -0.05;
+	    
+	    //float dphi = -0.05;
 	    if( fabs(mu->eta()) > 1.0  && fabs(mu->eta()) <= 3.0 ) {
 	      const std::vector<reco::MuonChamberMatch> chambers = mu->matches();
 
@@ -540,82 +632,8 @@ void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent,
 		}
 	      }
 	    }
-	    /**
-	    //if( mu->pt() > 10.) continue;
-
-	    if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMOneStationTight")) ) continue;
-	    if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMLastStationTight")) ) continue;
-	    const reco::TrackRef innerTrackRef = mu->innerTrack();
-	    if(innerTrackRef.isNull()) continue;
-	    if( innerTrackRef->hitPattern().pixelLayersWithMeasurement() <= 1 ) continue;
-	    if( innerTrackRef->hitPattern().numberOfValidTrackerHits() <= 11 ) continue;
-	    if( innerTrackRef->normalizedChi2() >= 1.8 ) continue;
-	    if( fabs(innerTrackRef->dxy(pv->position())) > 3. ) continue;
-
-	    if( mu->eta() > 1.1  && mu->eta() <= 2.4 ) {
-	      //softMuonsPlus.push_back(&*mu);
-	      //softMuons.push_back(&*mu);
-	      nSoftMuons++;
-	    }
-	    if( mu->eta() < -1.1 && mu->eta() >= -2.4 ) {
-	      //softMuonsMinus.push_back(&*mu);
-	      //softMuons.push_back(&*mu);
-	      nSoftMuons++;
-	    }
-	    nSoftMuonsNoEta++;
-	    */
 	  }
-          /**
-	  // Iterate again to get the tight muons
-	  reco::MuonCollection::const_iterator mu;
-	  for(mu = collisionMuons->begin() ; mu != collisionMuons->end() ; mu++ ) {
-	    if( !mu->isTrackerMuon() ) continue;
-	    if( !mu->isGlobalMuon() ) continue;
-	    if( mu->pt() < 10.) continue;
-	    const reco::TrackRef globalTrackRef = mu->globalTrack();
-	    if(globalTrackRef.isNull()) continue;
-	    if( globalTrackRef->hitPattern().numberOfValidMuonHits() == 0 ) continue;
-	    if( globalTrackRef->normalizedChi2() >= 10 ) continue;
-	    if( mu->numberOfMatchedStations() <= 1 ) continue;
-	    const reco::TrackRef innerTrackRef = mu->innerTrack();
-	    if(innerTrackRef.isNull()) continue;
-	    if( fabs(innerTrackRef->dxy(pv->position())) > .2 ) continue;
-	    if( !innerTrackRef->hitPattern().numberOfValidPixelHits()  ) continue;
-	    if( innerTrackRef->hitPattern().numberOfValidTrackerHits() <= 10 ) continue;
-	    if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMOneStationTight")) ) continue;
-	    //if( !muon::isGoodMuon(*mu,muon::selectionTypeFromString("TMLastStationTight")) ) continue;
-	  
-	    if( mu->eta() > 1.1  && mu->eta() <= 2.4 ) {
-	      //tightMuonsPlus.push_back(&*mu);
-	      //tightMuons.push_back(&*mu);
-	      nTightMuons += 1;
-	    }
-	    
-	    if( mu->eta() < -1.1 && mu->eta() >= -2.4 ) {
-	      //tightMuonsMinus.push_back(&*mu);
-	      //tightMuons.push_back(&*mu);
-	      nTightMuons += 1;
-	    } 
-	    nTightMuonsNoEta += 1;
-	  }
-	  */
 	}
-	/**
-	if( nTrackerMuons > 0 ) 
-	  nTrackerMuonEvents+=1;
-	
-	if( nSoftMuons > 0 ) 
-	  nSoftMuonEvents +=1;
-	
-	if( nSoftMuonsNoEta > 0 ) 
-	  nSoftMuonNoEtaEvents +=1 ;
-	
-	if( nTightMuons > 0 ) 
-	  nTightMuonEvents += 1;
-	
-	if( nTightMuonsNoEta > 0) 
-	  nTightMuonNoEtaEvents += 1;
-	*/
 	/** END MUON SEARCH **/
 	oppositeMuon = true;
 	if (hasCollisionMatch) {
@@ -629,6 +647,7 @@ void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent,
 	  dphi_bins[10]=true;
 	  hCSCSegmentPhi_.Fill(iSegment_phi); // histogram phi for all tagged CSCSegments
 	  hDphiProbeCSCSegmentMET_.Fill(dphi);
+
 	}
       } 
 
@@ -660,21 +679,46 @@ void HaloFilterPerformanceAnalyzer::analyzeHaloWithMET(const edm::Event& iEvent,
 	
       }
     }
+    
     // Record MET and MET phi for all events tagged.
-    if (oppositeMuon) 
+    if (oppositeMuon) {
       hHaloWithMET_.SetBinContent(2, hHaloWithMET_.GetBinContent(2)+1); // MET>50GeV && Opposite CSCSegment
+      hnVtxMETAll_.Fill(nVtx);
+    }
 
     if (tagPlus || tagMinus) {
       hHaloWithMET_.SetBinContent(3, hHaloWithMET_.GetBinContent(3)+1); // MET>50GeV && Opposite NC-CSCSegment
       //hMET_.Fill(calomet->pt());
       hMET_.Fill(pfmet->pt());
       hMETPhi_.Fill(met_phi);
-      metCSCEvents_ <<  iEvent.id().run() << ":" <<iEvent.luminosityBlock() << ":" << iEvent.id().event()
+      metCSCEvents_ <<  iEvent.id().run() << ":" 
+		    <<iEvent.luminosityBlock() << ":" 
+		    << iEvent.id().event()
 		    << std::endl;
       
       // Probe (ie, if event has CSCSegment opposite MET vector, is it halo?)
-      if (cscLooseId) hHaloWithMET_.SetBinContent(4, hHaloWithMET_.GetBinContent(4)+1);
-      if (cscTightId) hHaloWithMET_.SetBinContent(5, hHaloWithMET_.GetBinContent(5)+1);
+      if (cscLooseId) {
+	hHaloWithMET_.SetBinContent(4, hHaloWithMET_.GetBinContent(4)+1);
+	hnVtxMETHaloLoose_.Fill(nVtx);
+	metCSCLooseEvents_ << iEvent.id().run() << ":" 
+			   << iEvent.luminosityBlock() << ":" 
+			   << iEvent.id().event()
+			   << std::endl;
+      }
+      if (cscTightId) { 
+	hHaloWithMET_.SetBinContent(5, hHaloWithMET_.GetBinContent(5)+1);
+	hnVtxMETHaloTight_.Fill(nVtx);
+	metCSCTightEvents_ << iEvent.id().run() << ":" 
+			   << iEvent.luminosityBlock() << ":" 
+			   << iEvent.id().event()
+			   << std::endl;
+      }
+      if (!cscLooseId && !cscTightId) { 
+	metCSCNeitherEvents_ << iEvent.id().run() << ":" 
+			     << iEvent.luminosityBlock() << ":" 
+			     << iEvent.id().event()
+			     << std::endl;
+      }
     }
   }
 }

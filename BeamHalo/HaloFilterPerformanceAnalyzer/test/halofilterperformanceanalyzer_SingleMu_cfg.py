@@ -27,17 +27,17 @@ process.MessageLogger.cerr.FwkReport.reportEvery = 1000
 #process.load("RecoMuon/Configuration/RecoMuon_cff")
 #process.load("RecoMuon/Configuration/RecoMuonCosmics_cff")
 
-process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(1000) )
+process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(100000) )
 process.GlobalTag.globaltag ='GR_P_V32::All'
 process.source = cms.Source("PoolSource",
     # replace 'myfile.root' with the source file you want to use
     fileNames = cms.untracked.vstring(
-    '/store/data/Run2012A/MinimumBias/RECO/PromptReco-v1/000/193/339/66B54DF6-4D97-E111-9B8F-BCAEC5364C42.root' # 193339
+    '/store/data/Run2012B/SingleMu/RECO/PromptReco-v1/000/194/076/3AEEBC32-AC9E-E111-BE36-485B3962633D.root' # 194076
     )
 )
 
 process.load("BeamHalo.HaloFilterPerformanceAnalyzer.halofilterperformanceanalyzer_cfi")
-process.haloFilterAnalyzer.outputFile = cms.string('haloFilterPerformance_METPD_pfmet.root')
+process.haloFilterAnalyzer.outputFile = cms.string('haloFilterPerformance_SingleMu.root')
 
 process.p = cms.Path(process.haloFilterAnalyzer)
                                             

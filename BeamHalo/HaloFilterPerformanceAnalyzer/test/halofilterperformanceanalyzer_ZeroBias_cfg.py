@@ -68,6 +68,6 @@ process.zerobiasfilter = cms.EDFilter("HLTHighLevel",
                                       )
 
 process.load("BeamHalo.HaloFilterPerformanceAnalyzer.halofilterperformanceanalyzer_cfi")
-process.haloFilterAnalyzer.outputFile = cms.string('haloFilterPerformance_HLT_ZeroBias.root')
+process.haloFilterAnalyzer.outputFile = cms.string('haloFilterPerformance.root')
 
 process.p = cms.Path(process.zerobiasfilter*process.haloFilterAnalyzer)
